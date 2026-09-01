@@ -1,0 +1,42 @@
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Cache e bytecode Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Poetry (se o venv não for local, geralmente fica fora do repo)
+# poetry.lock -> normalmente É versionado, não ignore (garante reprodutibilidade)
+
+# Banco de dados local (SQLite)
+*.db
+*.sqlite3
+livros.db
+
+# Configurações do VS Code (opcional, depende do time)
+.vscode/
+
+# Variáveis de ambiente / segredos
+.env
+.env.*
+
+# Logs
+*.log
+
+# Cache de testes / ferramentas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Arquivos de SO
+.DS_Store
+Thumbs.db
+
+# Build / distribuição
+dist/
+build/
+*.egg-info/
