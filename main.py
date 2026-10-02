@@ -107,6 +107,17 @@ def read_item(item_id: int, q: str | None = None):
     return {"item_id": item_id, "q": q}
 
 
+@app.get("/debug/redis")
+def ver_livros_redis():
+    chaves = redis_client.keys("livro:*")
+    livros = []
+    for chave in chaves:
+        valor = redis_client.get(chave)
+        ttl = redis_client.ttl(chave)
+        livros.append({"chave": chave, "valor": json.loads(valor), "ttl": ttl})
+    return livros
+
+
 @app.get("/livros")
 async def get_livros(
     page: int = Query(1, ge=1, description="Número da página"),
@@ -123,6 +134,11 @@ async def get_livros(
     coluna = getattr(LivroDB, sort_by)
     ordenacao = coluna.asc() if order == "asc" else coluna.desc()
 
+    cache_key = f"livros:page={page}&size={size}&sort_by={sort_by}&order={order}"
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
     livros = (
         db.query(LivroDB)
         .order_by(ordenacao, LivroDB.id.asc())
@@ -136,7 +152,7 @@ async def get_livros(
 
     total = db.query(LivroDB).count()
 
-    return {
+    resposta = {
         "page": page,
         "size": size,
         "total": total,
@@ -153,6 +169,8 @@ async def get_livros(
             for livro in livros
         ],
     }
+    redis_client.setex(cache_key, 30, json.dumps(resposta))
+    return resposta
 
 
 @app.post("/livros")
@@ -194,6 +212,8 @@ async def update_livro(
     db_livro.editora = livro.editora
     db.commit()
     db.refresh(db_livro)
+    salvar_livro_redis(db_livro.id, livro)
+
     return {"message": "Livro atualizado com sucesso"}
 
 
