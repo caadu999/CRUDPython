@@ -76,12 +76,31 @@ DirecoesOrdenacao = Literal["asc", "desc"]
 Base.metadata.create_all(bind=engine)
 
 
-def salvar_livro_redis(livro_id: int, livro: Livro):
+CACHE_LISTAGEM_PREFIXO = "livros:page="
+
+
+def _invalidar_cache_listagem():
+    chaves = list(redis_client.scan_iter(match=f"{CACHE_LISTAGEM_PREFIXO}*"))
+    if chaves:
+        redis_client.delete(*chaves)
+
+
+def _salvar_livro_redis_sync(livro_id: int, livro: Livro):
     redis_client.set(f"livro:{livro_id}", json.dumps(livro.model_dump()))
+    _invalidar_cache_listagem()
 
 
-def deletar_livro_redis(livro_id: int):
+def _deletar_livro_redis_sync(livro_id: int):
     redis_client.delete(f"livro:{livro_id}")
+    _invalidar_cache_listagem()
+
+
+async def salvar_livros_redis(livro_id: int, livro: Livro):
+    await asyncio.to_thread(_salvar_livro_redis_sync, livro_id, livro)
+
+
+async def deletar_livros_redis(livro_id: int):
+    await asyncio.to_thread(_deletar_livro_redis_sync, livro_id)
 
 
 def get_db():
@@ -180,7 +199,7 @@ async def get_livros(
     coluna = getattr(LivroDB, sort_by)
     ordenacao = coluna.asc() if order == "asc" else coluna.desc()
 
-    cache_key = f"livros:page={page}&size={size}&sort_by={sort_by}&order={order}"
+    cache_key = f"{CACHE_LISTAGEM_PREFIXO}{page}&size={size}&sort_by={sort_by}&order={order}"
     cached = redis_client.get(cache_key)
     if cached:
         return json.loads(cached)
@@ -238,7 +257,7 @@ async def post_livro(
     db.add(novo_livro)
     db.commit()
     db.refresh(novo_livro)
-    salvar_livro_redis(novo_livro.id, livro)
+    await salvar_livros_redis(novo_livro.id, livro)
     return {"message": "Livro cadastrado com sucesso"}
 
 
@@ -258,7 +277,7 @@ async def update_livro(
     db_livro.editora = livro.editora
     db.commit()
     db.refresh(db_livro)
-    salvar_livro_redis(db_livro.id, livro)
+    await salvar_livros_redis(db_livro.id, livro)
 
     return {"message": "Livro atualizado com sucesso"}
 
@@ -277,6 +296,6 @@ async def delete_livro(
     db.delete(db_livro)
     db.commit()
 
-    deletar_livro_redis(id)
+    await deletar_livros_redis(id)
 
     return {"message": "Livro deletado com sucesso"}
